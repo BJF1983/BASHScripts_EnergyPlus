@@ -1,13 +1,14 @@
 #20150731 NZEBankRun.sh
 #Run NZE bank simulation for specific climate and HVAC system
 
-#useage NZEBankRun.sh <climate (1a,2a,2b,etc) <RTU | VRF | GTHP> <simulation name>
+#useage NZEBankRun.sh <climate [1a | 2a | 2b | etc]> <code basis [90.7 | AEDG | Optimized]> <HVAC System [RTU | VRF | GTHP]> <simulation name>
 
 #NZE Bank "base" files should be placed in ./NZEBankBaseFiles
-#Climate specific files should be placed in ./ClimateFiles/<1a,2a,2b,etc>
-#HVAC files should be placed in ./HVACSystems/<RTU | VRF | GTHP>
+#Climate specific construction files should be placed in ./ClimateFiles/[1a | 2a | 2b | etc]/Constructions/[90.7 | AEDG | Optimized]
+#Climate specific weather files should be placed in ./ClimateFiles/[1a | 2a | 2b | etc]/WeatherFiles
+#HVAC files should be placed in ./HVACSystems/[RTU | VRF | GTHP]
 
-#Parameter file to use
+#Parameter file (ParameterFile.csv) can be used
 #This should be a csv file. The first column should be the key word pattern to
 #be repaced in the compiled IDF file for the simulation.
 #The second column should be the value to replace its associate variable with.
@@ -16,44 +17,62 @@
 #Simulation name to identify the created IDF file and associated simulation files
 #This name will be appenned to the climate zone and HVAC system type
 
+#Check for input errors
 ERROR=""
 if [ -z $1 ]; then ERROR=true; fi
 if [ -z $2 ]; then ERROR=true; fi
 if [ -z $3 ]; then ERROR=true; fi
-if [ "$ERROR" == "true" ]; then echo "Error. Need more input. Usage: ./NZEBankRun.sh <climate> <HVAC System> <Simulation Name>"; exit; fi
+if [ -z $4 ]; then ERROR=true; fi
+if [ "$ERROR" == "true" ]; then echo "Error. Need more input. Usage: ./NZEBankRun.sh <climate> <code basis> <HVAC System> <Simulation Name>"; exit; fi
 
+#Display script parameters back to user and use tee to also send this to a log file
+Climate=$1;          							
+Code=$2;          							
+HVACSystem=$3;       							
+SimName=$4;		 								
+WeatherFile=`ls ClimateFiles/$Climate/WeatherFiles/*epw`; 	
+ParameterFile=ParameterFile.csv;				
 
-
-echo ""
-Climate=$1;          							echo "Climate:       "$Climate
-HVACSystem=$2;       							echo "HVACSystem:    "$HVACSystem
-SimName=$3;		 								echo "SimName:       "$SimName
-WeatherFile=`ls ClimateFiles/$Climate/*epw`; 	echo "WeatherFile:   "$WeatherFile
-ParameterFile=ParameterFile.csv;				echo "ParameterFile: "$ParameterFile
-echo ""
-
-SimFolder=RUN_"$Climate"_"$HVACSystem"_"$SimName"
-
+#Make sure this simulation run will not overwrite existing files
 if [ -d "$SimFolder" ]; then echo "Careful $SimFolder already exists. Rename or delete existing folder or change this simulation's run name."; exit; fi
 
-#Make simulation folder
+#Create simulation folder variable
+SimFolder=RUN_"$Climate"_"$HVACSystem"_"$SimName"
+#Make simulation folder and folder for individual IDF files
 mkdir ./$SimFolder 2>/dev/null
+mkdir ./$SimFolder/IndividualIDFFiles
+
+echo "" | tee -a ./$SimFolder/log.txt
+echo "Climate:       "$Climate | tee -a ./$SimFolder/log.txt
+echo "Code:          "$Code | tee -a ./$SimFolder/log.txt
+echo "HVACSystem:    "$HVACSystem | tee -a ./$SimFolder/log.txt
+echo "SimName:       "$SimName | tee -a ./$SimFolder/log.txt
+echo "WeatherFile:   "$WeatherFile | tee -a ./$SimFolder/log.txt
+echo "ParameterFile: "$ParameterFile | tee -a ./$SimFolder/log.txt
+echo "" | tee -a ./$SimFolder/log.txt
+
+
 
 #Copy all base files and schedule folder (if it exists) to the simulation folder
-cp -r ./NZEBankBaseFiles/* ./$SimFolder
+cp -r ./NZEBankBaseFiles/* ./$SimFolder/IndividualIDFFiles
 
 #Copy HVAC system files to simulation folder
-cp ./HVACSystems/$HVACSystem/* ./$SimFolder
+cp ./HVACSystems/$HVACSystem/* ./$SimFolder/IndividualIDFFiles
 
 #Copy climate specific files to simulation folder
-cp ./ClimateFiles/$Climate/*.idf ./$SimFolder
-cp ./ClimateFiles/$Climate/*.ddy ./$SimFolder
+cp ./ClimateFiles/$Climate/Constructions/$Code/*.idf ./$SimFolder/IndividualIDFFiles
+cp ./ClimateFiles/$Climate/WeatherFiles/*.ddy ./$SimFolder/IndividualIDFFiles
+cp ./ClimateFiles/$Climate/WeatherFiles/*.idf ./$SimFolder/IndividualIDFFiles
 
 #Convert all input files to unix format for processing
-dos2unix -q ./$SimFolder/* 
+dos2unix -q ./$SimFolder/IndividualIDFFiles/* 
 
 #Concatenate all input files
-cat ./$SimFolder/* 2> /dev/null > ./$SimFolder/Combined.idf
+cat ./$SimFolder/IndividualIDFFiles/* 2> /dev/null > ./$SimFolder/Combined.idf
+
+#Copy and folders that might be in the IndividualIDFFiles folder.
+#These may include folders that contain schedules
+cp -r `ls -d ./$SimFolder/IndividualIDFFiles/*/` ./$SimFolder
 
 #Read in parameters from parameterfile
 echo "Parameters:"
@@ -61,22 +80,21 @@ for x in `tail -n +2 $ParameterFile | cut -f1-2 -d ','`
 do
 	ParmName=`echo $x | cut -f1 -d','`
 	ParmVal=`echo $x | cut -f2 -d ','`
-	echo $ParmName $ParmVal
+	echo $ParmName $ParmVal | tee -a ./$SimFolder/log.txt
 	sed -i 's/'$ParmName'/'$ParmVal'/g'  ./$SimFolder/Combined.idf
 done
 
 #Copy weather file
 cp $WeatherFile $SimFolder
-#Change weather file variable for simulation
-WeatherFile=`echo $WeatherFile | cut -f3 -d '/'`
+#Change weather file variable for simulation. Remove directory path
+WeatherFile=`echo $WeatherFile | cut -f4 -d '/'`
 
+#Copy the main EnergyPlus executable to the simulation folder
 cp RunEPlus.bat $SimFolder
+
+#Change working directory to simulation folder. This is where simulations will be exectued.
 cd $SimFolder
 
-RunEPlus.bat `echo Combined.idf $WeatherFile | tr '/' '\'`
-
-# ParamFile=20150723_ThermalResponseParameters_BJF.txt
-
-# #Extract all lines between first line of matching objects and their terminating character ";"
-# sed -n '/'$ClimateKeyword'/,/'$ClimateKeyword'/p' $file #> "$file"_"$EPObjectClean".idf
+#Run EnergyPlus
+RunEPlus.bat `echo Combined.idf "$WeatherFile" | tr '/' '\'`
 
