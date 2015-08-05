@@ -96,5 +96,5 @@ cp RunEPlus_Local.bat $SimFolder
 cd $SimFolder
 
 #Run EnergyPlus
-RunEPlus_Local.bat `echo Combined.idf "$WeatherFile" | tr '/' '\'`
+./RunEPlus_Local.bat `echo Combined.idf "$WeatherFile" | tr '/' '\'`
 
