@@ -90,11 +90,11 @@ cp $WeatherFile $SimFolder
 WeatherFile=`echo $WeatherFile | cut -f4 -d '/'`
 
 #Copy the main EnergyPlus executable to the simulation folder
-cp RunEPlus.bat $SimFolder
+cp RunEPlus_Local.bat $SimFolder
 
 #Change working directory to simulation folder. This is where simulations will be exectued.
 cd $SimFolder
 
 #Run EnergyPlus
-RunEPlus.bat `echo Combined.idf "$WeatherFile" | tr '/' '\'`
+RunEPlus_Local.bat `echo Combined.idf "$WeatherFile" | tr '/' '\'`
 
