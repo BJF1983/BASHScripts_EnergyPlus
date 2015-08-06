@@ -98,3 +98,7 @@ cd $SimFolder
 #Run EnergyPlus
 ./RunEPlus_Local.bat `echo Combined.idf "$WeatherFile" | tr '/' '\'`
 
+cp ../ProcessEPCSVFile.sh ./
+cp ../EndUseBarChart.gnu ./
+
+./ProcessEPCSVFile.sh
