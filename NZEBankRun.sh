@@ -1,12 +1,13 @@
-#20150731 NZEBankRun.sh
+#20150814 NZEBankRun.sh
 #Run NZE bank simulation for specific climate and HVAC system
 
-#useage NZEBankRun.sh <climate [1a | 2a | 2b | etc]> <code basis [90.7 | AEDG | Optimized]> <HVAC System [RTU | VRF | GTHP]> <simulation name>
+#useage NZEBankRun.sh <climate [1a | 2a | 2b | etc]> <code basis [90.7 | AEDG | Optimized]> <HVAC System [RTU | VRF | GTHP]> <Window Type Type [Static | ViewGlass] <simulation name>
 
 #NZE Bank "base" files should be placed in ./NZEBankBaseFiles
-#Climate specific construction files should be placed in ./ClimateFiles/[1a | 2a | 2b | etc]/Constructions/[90.7 | AEDG | Optimized]
+#Climate specific construction files, except window objects, should be placed in ./ClimateFiles/[1a | 2a | 2b | etc]/Constructions/[90.7 | AEDG | Optimized]
 #Climate specific weather files should be placed in ./ClimateFiles/[1a | 2a | 2b | etc]/WeatherFiles
 #HVAC files should be placed in ./HVACSystems/[RTU | VRF | GTHP]
+#Climate specific window objects should be placed in ./ClimateFiles/[1a | 2a | 2b | etc]/Constructions/[90.7 | AEDG | Optimized]/[Window_Static | Window_ViewGlass]
 
 #Parameter file (ParameterFile.csv) can be used
 #This should be a csv file. The first column should be the key word pattern to
@@ -15,7 +16,7 @@
 #A third column may be used for comments.
 
 #Simulation name to identify the created IDF file and associated simulation files
-#This name will be appenned to the climate zone and HVAC system type
+#This name will be appended to the climate zone and HVAC system type
 
 #Check for input errors
 ERROR=""
@@ -23,21 +24,24 @@ if [ -z $1 ]; then ERROR=true; fi
 if [ -z $2 ]; then ERROR=true; fi
 if [ -z $3 ]; then ERROR=true; fi
 if [ -z $4 ]; then ERROR=true; fi
-if [ "$ERROR" == "true" ]; then echo "Error. Need more input. Usage: ./NZEBankRun.sh <climate> <code basis> <HVAC System> <Simulation Name>"; exit; fi
+if [ -z $5 ]; then ERROR=true; fi
+if [ "$ERROR" == "true" ]; then echo "Error. Need more input. Usage: ./NZEBankRun.sh <climate> <code basis> <HVAC System> <Window Type> <Simulation Name>"; exit; fi
 
 #Display script parameters back to user and use tee to also send this to a log file
 Climate=$1;          							
 Code=$2;          							
 HVACSystem=$3;       							
-SimName=$4;		 								
+WindowType=$4;       							
+SimName=$5;		 								
 WeatherFile=`ls ClimateFiles/$Climate/WeatherFiles/*epw`; 	
 ParameterFile=ParameterFile.csv;				
+
+#Create simulation folder variable
+SimFolder=RUN_"$Climate"_"$Code"_"$HVACSystem"_"$WindowType"_"$SimName"
 
 #Make sure this simulation run will not overwrite existing files
 if [ -d "$SimFolder" ]; then echo "Careful $SimFolder already exists. Rename or delete existing folder or change this simulation's run name."; exit; fi
 
-#Create simulation folder variable
-SimFolder=RUN_"$Climate"_"$HVACSystem"_"$SimName"
 #Make simulation folder and folder for individual IDF files
 mkdir ./$SimFolder 2>/dev/null
 mkdir ./$SimFolder/IndividualIDFFiles
@@ -46,6 +50,7 @@ echo "" | tee -a ./$SimFolder/log.txt
 echo "Climate:       "$Climate | tee -a ./$SimFolder/log.txt
 echo "Code:          "$Code | tee -a ./$SimFolder/log.txt
 echo "HVACSystem:    "$HVACSystem | tee -a ./$SimFolder/log.txt
+echo "WindowType:    "$WindowType | tee -a ./$SimFolder/log.txt
 echo "SimName:       "$SimName | tee -a ./$SimFolder/log.txt
 echo "WeatherFile:   "$WeatherFile | tee -a ./$SimFolder/log.txt
 echo "ParameterFile: "$ParameterFile | tee -a ./$SimFolder/log.txt
@@ -64,6 +69,9 @@ cp ./ClimateFiles/$Climate/Constructions/$Code/*.idf ./$SimFolder/IndividualIDFF
 cp ./ClimateFiles/$Climate/WeatherFiles/*.ddy ./$SimFolder/IndividualIDFFiles
 cp ./ClimateFiles/$Climate/WeatherFiles/*.idf ./$SimFolder/IndividualIDFFiles
 
+#Copy climate specific and window type files to simulation folder
+cp ./ClimateFiles/$Climate/Constructions/$Code/Windows_"$WindowType"/*.idf ./$SimFolder/IndividualIDFFiles
+
 #Convert all input files to unix format for processing
 dos2unix -q ./$SimFolder/IndividualIDFFiles/* 
 
@@ -74,7 +82,7 @@ cat ./$SimFolder/IndividualIDFFiles/* 2> /dev/null > ./$SimFolder/Combined.idf
 #These may include folders that contain schedules
 cp -r `ls -d ./$SimFolder/IndividualIDFFiles/*/` ./$SimFolder
 
-#Read in parameters from parameterfile
+#Read in parameters from parameter file
 echo "Parameters:"
 for x in `tail -n +2 $ParameterFile | cut -f1-2 -d ','`
 do
